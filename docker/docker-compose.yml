@@ -17,6 +17,22 @@ services:
       - BPL_DEBUG_PORT=8001 # 디버깅을 위한 포트
       - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
       - SPRING_PROFILES_ACTIVE=testdata
+
+  order-service:
+    depends_on:
+      - polar-postgres
+    image: "order-service"
+    container_name: "order-service"
+    ports:
+    - 9002:9002
+    - 8002:8002
+    environment:
+      - BPL_DEBUG_ENABLED=true
+      - BPL_DEBUG_PORT=8002
+      - POLAR_CATALOG_SERVICE_URI=http://catalog-service:9001
+      - SPRING_CLOUD_CONFIG_URI=http://config-service:8888
+      - SPRING_R2DBC_URL=r2dbc:postgresql://polar-postgres:5432/polardb_order
+      - SPRING_FLYWAY_URL=jdbc:postgresql://polar-postgres:5432/polardb_order
   
   polar-postgres:
     image: "postgres:14.12"
@@ -29,3 +45,31 @@ services:
       # - POSTGRES_DB=polardb_catalog
     volumes:
       - ./postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql # 컨테이너 내부 경로에 init.sql 파일 마운트 후 실행
+  
+  polar-redis:
+    image: "redis:7.2"
+    container_name: "polar-redis"
+    ports:
+      - 6379:6379
+  
+  polar-rabbitmq:
+    image: rabbitmq:3.13-management # 관리 플러그인이 활성화 된 래빗MQ 공식 이미지
+    container_name: polar-rabbitmq
+    ports:
+      - 5672:5672 # 래빗MQ가 AMQP 요청을 듣는 포트
+      - 15672:15672 # 관리용 GUI 포트
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf # 설정파일 마운트
+
+  polar-keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: "polar-keycloak"
+    command: start-dev --import-realm # 애플리케이션 시작 시 제공된 설정을 임포트
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    environment:
+      - KEYCLOAK_ADMIN=user
+      - KEYCLOAK_ADMIN_PASSWORD=password
+    ports:
+      - 8080:8080
+    
