@@ -1,28 +1,28 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources: # 베이스 메니피스트 저장소
-  - github.com/leejiho1996/catalog-service/k8s?ref=main
+resources:
+- github.com/leejiho1996/catalog-service/k8s?ref=main
 
 #  patch 파일의 kind 와 metadata.name 이
 #  base 리소스의 kind 와 metadata.name 과 일치하면
 #  -> 그 리소스에 patch 내용이 merge(덮어쓰기/추가)
-patchesStrategicMerge: # catalog-service의 deployment에 덮어 씌어진다
-  - patch-env.yml
-  - patch-volume.yml
-  - patch-resources.yml
+patchesStrategicMerge:
+- patch-env.yml
+- patch-volume.yml
+- patch-resources.yml
 
 configMapGenerator:
-  - behavior: merge
-    files:
-      - application-prod.yml # 베이스 kustomization 에 정의된 컨피그맵을 이 컨피그맵과 병합
-    name: catalog-config  # 베이스 kustomization 과 동일한 컨피그맵 이름
+- behavior: merge
+  files:
+  - application-prod.yml
+  name: catalog-config
 
 images:
-  - name: catalog-service # 배포 매니페스트에 정의된 컨테이너 이름
-    newName: ghcr.io/leejiho1996/catalog-service # 컨테이너에 대한 새 이미지 이름
-    newTag: fd4fe198dcb91cb876ab2f9c3ee78ca8b91e6fdb # 컨테이너에 대한 새로운 태그
+- name: catalog-service
+  newName: ghcr.io/leejiho1996/catalog-service
+  newTag: 85b17af914137868ea98a68277931897110b3750
 
 replicas:
-  - name: catalog-service
-    count: 2
+- count: 2
+  name: catalog-service
