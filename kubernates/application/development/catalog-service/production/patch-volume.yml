@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: catalog-service
+          volumeMounts:
+            - name: postgres-credentials-volume
+              # postgres credential을 가지고 있는 시크릿으로 해당 볼륨 마운트
+              mountPath: /workspace/secrets/postgres # 해당 경로는 컨테이너 내부 파일 시스템 경로`
+            - name: keycloak-issuer-resourceserver-secret-volume
+              # keycloak resource url을 가지고 있는 시크릿으로 해당 볼륨 마운트
+              mountPath: /workspace/secrets/keycloak
+      volumes:
+        - name: postgres-credentials-volume
+          secret:
+            secretName: polar-postgres-catalog-credentials
+        - name: keycloak-issuer-resourceserver-secret-volume
+          secret:
+            secretName: keycloak-issuer-resourceserver-secret

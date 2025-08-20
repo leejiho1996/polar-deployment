@@ -1,0 +1,6 @@
+polar:
+  greeting: Welcome to our book catalog from a production Kubernetes environment!
+spring:
+  config:
+    # secret volume이 마운트된 경로로 부터 설정을 import (마지막 슬래쉬 꼭 붙혀야 함)
+    import: configtree:/workspace/secrets/*/

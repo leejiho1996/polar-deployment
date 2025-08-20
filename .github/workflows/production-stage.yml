@@ -1,0 +1,29 @@
+name: Production Stage
+
+on:
+  repository_dispatch: # 다른 저장소로부터 app_delivery 이벤트를 새로 받을 때만 워크플로 실행
+    types: [app_delivery]
+
+jobs:
+  update:
+    name: Update application version
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env: # 이벤트 페이로드 데이터 변수로 저장
+      APP_IMAGE: ${{ github.event.client_payload.app_image }}
+      APP_NAME: ${{ github.event.client_payload.app_name }}
+      APP_VERSION: ${{ github.event.client_payload.app_version }}
+    steps:
+      - name: Checkout source code # 저장소 체크아웃
+        uses: actions/checkout@v4
+      - name: Update image version
+        run: | # 프로덕션 메니피스트가 존재하는 경로로 이동한 후, kustomize의 이미지 이름 및 버전 업데이트
+          cd kubernetes/applications/${{ env.APP_NAME }}/production 
+          kustomize edit set image ${{ env.APP_NAME }}=${{ env.APP_IMAGE }}:${{ env.APP_VERSION }}
+          sed -i 's/ref=[\w+]/${{ env.APP_VERSION }}/' kustomization.yml
+      - name: Commit updated manifests
+        uses: stefanzweifel/git-auto-commit-action@v5 # 이전 단계에서의 변경사항을 커밋하고 저장소로 push 하는 액션
+        with:
+          commit_message: "Update ${{ env.APP_NAME }} to version ${{ env.APP_VERSION }}"
+          branch: main

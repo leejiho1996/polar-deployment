@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources: # 베이스 메니피스트 저장소
+  - github.com/leejiho1996/catalog-service/k8s?ref=main
+
+patchesStrategicMerge: # 전략적 병합 방법으로 베이스 메니피스트에 적용할 패치의 목록 지정
+  - patch-env.yml
+
+configMapGenerator:
+  - behavior: merge # 베이스 kustomization 에 정의된 컨피그맵을 이 컨피그맵과 병합
+    files:
+      - application-staging.yml
+    name: catalog-config # 베이스 kustomization 과 동일한 컨피그맵 이름
+
+images:
+  - name: catalog-service
+    newName: ghcr.io/leejiho1996/catalog-service
+    newTag: latest
+
+replicas:
+  - name: catalog-service # 복제할 deployment 객체의 이름
+    count: 2

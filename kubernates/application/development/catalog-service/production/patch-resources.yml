@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: catalog-service
+          resources:
+            requests:
+              memory: 756Mi # 컨테이너가 실행되기 위한 최소한의 메모리 (756Mi)
+              cpu: "0.1" # 컨테이너는 최소 0.1CPU에 해당하는 CPU 사이클을 확보해야한다.
+            limits: # 컨테이너가 사용할 수 있는 최대한의 리소스
+              memory: 756Mi
+              cpu: "2"

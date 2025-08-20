@@ -6,6 +6,9 @@ services:
   catalog-service:
     depends_on:
       - polar-postgres
+      - polar-keycloak
+      - fluent-bit
+      - tempo
     image: "catalog-service"
     container_name: "catalog-service"
     ports:
@@ -15,8 +18,18 @@ services:
       - BPL_JVM_THREAD_COUNT=50 # 메모리 계산을 위한 스레드 수를 설정하는 패키토 빌드팩 환경 변수 
       - BPL_DEBUG_ENABLED=true # 디버그 연결을 위해 JVM 설정 활성화 (패키토 빌드팩에 의해 제공)
       - BPL_DEBUG_PORT=8001 # 디버깅을 위한 포트
+      - JAVA_TOOL_OPTIONS=-javaagent:/workspace/BOOT-INF/lib/opentelemetry-javaagent-1.33.3.jar # JVM에 오픈텔레메터리 자바 에이전트를 로드하도록 지시
+      - OTEL_SERVICE_NAME=catalog-service # 애플리케이션의 이름으로 트레이스에 추가할 태그 사용
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317 # 분산 트레이스 백엔드인 tempo의 url
+      - OTEL_METRICS_EXPORTER=none
       - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
       - SPRING_PROFILES_ACTIVE=testdata
+      - SPRING_CLOUD_CONFIG_URI=http://config-service:8888
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://host.docker.internal:8080/realms/PolarBookshop
+    logging: # 어떤 로깅 드라이버를 사용할것인지 지정
+      driver: fluentd # 컨테이너 로깅 드라이버 설정을 위한 섹션
+      options:
+        fluentd-address: 127.0.0.1:24224 # 플루언트 비트 인스턴스의 주소
 
   order-service:
     depends_on:
@@ -33,7 +46,7 @@ services:
       - SPRING_CLOUD_CONFIG_URI=http://config-service:8888
       - SPRING_R2DBC_URL=r2dbc:postgresql://polar-postgres:5432/polardb_order
       - SPRING_FLYWAY_URL=jdbc:postgresql://polar-postgres:5432/polardb_order
-  
+
   polar-postgres:
     image: "postgres:14.12"
     container_name: "polar-postgres"
@@ -45,6 +58,37 @@ services:
       # - POSTGRES_DB=polardb_catalog
     volumes:
       - ./postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql # 컨테이너 내부 경로에 init.sql 파일 마운트 후 실행
+
+  edge-service:
+    depends_on:
+      - fluent-bit
+      - polar-keycloak
+      - polar-redis
+      - polar-ui
+    image: "edge-service"
+    container_name: "edge-service"
+    ports:
+      - 9000:9000
+      - 8000:8000
+    environment:
+      # Buildpacks environment variable to enable debug through a socket on port 8000
+      - BPL_DEBUG_ENABLED=true
+      - BPL_DEBUG_PORT=8000
+      - JAVA_TOOL_OPTIONS=-javaagent:/workspace/BOOT-INF/lib/opentelemetry-javaagent-1.33.3.jar
+      - OTEL_SERVICE_NAME=edge-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_METRICS_EXPORTER=none
+      - CATALOG_SERVICE_URL=http://catalog-service:9001
+      - ORDER_SERVICE_URL=http://order-service:9002
+      - SPA_URL=http://polar-ui:9004
+      - SPRING_CLOUD_CONFIG_URI=http://config-service:8888
+      - SPRING_DATA_REDIS_HOST=polar-redis
+      - SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI=http://host.docker.internal:8080/realms/PolarBookshop
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: 127.0.0.1:24224
+
   
   polar-redis:
     image: "redis:7.2"
@@ -72,4 +116,85 @@ services:
       - KEYCLOAK_ADMIN_PASSWORD=password
     ports:
       - 8080:8080
+
+  config-service:
+    depends_on:
+      - fluent-bit
+    image: "config-service"
+    container_name: "config-service"
+    ports:
+      - 8888:8888
+      - 9888:9888
+    environment:
+      # Buildpacks environment variable to configure the number of threads in memory calculation
+      - BPL_JVM_THREAD_COUNT=50
+      # Buildpacks environment variable to enable debug through a socket on port 9888
+      - BPL_DEBUG_ENABLED=true
+      - BPL_DEBUG_PORT=9888
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: 127.0.0.1:24224
+
+  polar-ui:
+    image: "ghcr.io/polarbookshop/polar-ui:v1"
+    container_name: "polar-ui"
+    ports:
+      - 9004:9004
+    environment:
+      - PORT=9004
+  
+
+  # Observability
+
+  grafana:
+    image: grafana/grafana-oss:10.4.3
+    container_name: grafana
+    depends_on:
+      - loki
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=user # 유저명 및 패스워드
+      - GF_SECURITY_ADMIN_PASSWORD=password
+    volumes:
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./observability/grafana/grafana.ini:/etc/grafana/grafana.ini
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    depends_on:
+      - fluent-bit
+    ports:
+      - "3100:3100"
+
+  fluent-bit:
+    image: grafana/fluent-bit-plugin-loki:2.9.8
+    container_name: fluent-bit
+    ports:
+      - "24224:24224"
+    environment:
+      - LOKI_URL=http://loki:3100/loki/api/v1/push # 로그 메시지를 전달할 로키 url
+    volumes:
+      - ./observability/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
     
+  prometheus:
+    image: quay.io/prometheus/prometheus:v2.52.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: tempo
+    command: -config.file=/etc/tempo-config.yml # 시작 단계에서 설정을 로드
+    ports:
+      - "3110:3100"     # Tempo
+      - "4317:4317"     # gRpc를 통해 오픈텔레메트리 프로토콜을 사요해 트레이스를 수신할 포트
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo-config.yml
