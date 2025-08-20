@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Update image version
         run: | # 프로덕션 메니피스트가 존재하는 경로로 이동한 후, kustomize의 이미지 이름 및 버전 업데이트
-          cd kubernetes/applications/${{ env.APP_NAME }}/production 
+          cd kubernetes/application/development/${{ env.APP_NAME }}/production 
           kustomize edit set image ${{ env.APP_NAME }}=${{ env.APP_IMAGE }}:${{ env.APP_VERSION }}
           sed -i 's/ref=[\w+]/${{ env.APP_VERSION }}/' kustomization.yml
       - name: Commit updated manifests
